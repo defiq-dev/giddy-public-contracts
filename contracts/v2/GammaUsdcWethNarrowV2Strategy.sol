@@ -10,9 +10,9 @@ import "./interfaces/gamma/IMasterChef.sol";
 import "./interfaces/gamma/IRewarder.sol";
 import "./interfaces/quick/IDragonsLair.sol";
 import "./GiddyVaultV2.sol";
-import "./libraries/GiddyLibraryV2.sol";
 
 contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
+  uint256 constant private BASE_PERCENT = 1e6;
   uint256 constant private COMPOUND_THRESHOLD_WMATIC = 1e14;
   uint256 constant private COMPOUND_THRESHOLD_DQUICK = 1e17;
   uint256 constant private COMPOUND_THRESHOLD_QUICK = 1e17;
@@ -38,6 +38,7 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
 
   function getContractBalance() public view override returns (uint256 amount) {
     (amount,) = IMasterChef(MASTER_CHEF).userInfo(PID, address(this));
+     amount += IERC20(USDC_WETH_POS).balanceOf(address(this));
   }
 
   function getContractRewards() public view override returns (uint256[] memory amounts) {
@@ -46,14 +47,12 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
     amounts[1] = IERC20(QUICK_TOKEN).balanceOf(address(this));
   }
 
-  function getNeedsCompound() public view override returns (bool[] memory needsCompound) {
+  function getNeedsCompound() public view override returns (bool needsCompound) {
     uint256[] memory rewards = getContractRewards();
-    needsCompound = new bool[](2);
-    needsCompound[0] = rewards[0] >= COMPOUND_THRESHOLD_WMATIC;
-    needsCompound[1] = rewards[1] >= COMPOUND_THRESHOLD_QUICK;
+    needsCompound = rewards[0] >= COMPOUND_THRESHOLD_WMATIC || rewards[1] >= COMPOUND_THRESHOLD_QUICK;
   }
 
-  function claimRewards() public override {
+  function claimRewards() external override {
     IMasterChef(MASTER_CHEF).deposit(PID, 0, address(this));
     uint value = IERC20(DQUICK_TOKEN_AND_LAIR).balanceOf(address(this));
     if (value > COMPOUND_THRESHOLD_DQUICK) {
@@ -61,50 +60,36 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
     }
   }
 
-  function compound(GiddyStrategyV2.SwapInfo[] calldata swaps) external override returns (uint256 staked) {
-    require(_msgSender() == address(vault), "FAILED_VAULT_CHECK");
-    require(swaps.length >= 2, "SWAP_LENGTH");
+  function compound(SwapInfo[] calldata swaps) external override onlyVault returns (uint256 staked) {
+    require(swaps.length == 4, "SWAP_LENGTH");
     uint256[] memory amounts = new uint256[](2);
-    if (swaps[swaps.length - 2].amount > 0) {
-      amounts[0] = GiddyLibraryV2.oneInchSwap(address(this), address(this), swaps[swaps.length - 2].srcToken, USDC_TOKEN, swaps[swaps.length - 2].amount, swaps[swaps.length - 2].data);
+    if (swaps[0].amount > 0) {
+      amounts[0] += GiddyLibraryV2.oneInchSwap(swaps[0], address(this), address(this), USDC_TOKEN);
     }
-    if (swaps[swaps.length - 1].amount > 0) {
-      amounts[1] = GiddyLibraryV2.oneInchSwap(address(this), address(this), swaps[swaps.length - 1].srcToken, WETH_TOKEN, swaps[swaps.length - 1].amount, swaps[swaps.length - 1].data);
+    if (swaps[1].amount > 0) {
+      amounts[1] += GiddyLibraryV2.oneInchSwap(swaps[1], address(this), address(this), WETH_TOKEN);
     }
-    return stake(amounts);
+    if (swaps[2].amount > 0) {
+      amounts[0] += GiddyLibraryV2.oneInchSwap(swaps[2], address(this), address(this), USDC_TOKEN);
+    }
+    if (swaps[3].amount > 0) {
+      amounts[1] += GiddyLibraryV2.oneInchSwap(swaps[3], address(this), address(this), WETH_TOKEN);
+    }
+    amounts[0] = deductEarningsFee(USDC_TOKEN, amounts[0]);
+    amounts[1] = deductEarningsFee(WETH_TOKEN, amounts[1]);
+    return depsoitLP(amounts);
   }
 
-  function deposit(uint256[] memory amounts) external override nonReentrant returns (uint256 staked) {
-    require(_msgSender() == address(vault), "FAILED_VAULT_CHECK");
-    return stake(amounts);
+  function deposit(uint256[] memory amounts) external override nonReentrant onlyVault returns (uint256 staked) {
+    return depsoitLP(amounts);
   }
 
-  function stake(uint256[] memory amounts) private returns (uint256 staked) {
-    if (!IERC20(USDC_TOKEN).approve(USDC_WETH_POS, amounts[0])) {
-      revert("LP_USDC_APPROVE");
-    }
-    if (!IERC20(WETH_TOKEN).approve(USDC_WETH_POS, amounts[1])) {
-      revert("LP_WETH_APPROVE");
-    }
-    staked = IUniProxy(UNI_PROXY).deposit(amounts[0], amounts[1], address(this), USDC_WETH_POS, [uint(0), uint(0), uint(0), uint(0)]);
-    if (!IERC20(USDC_WETH_POS).approve(MASTER_CHEF, staked)) {
-      revert("STAKE_APPROVE");
-    }
-    IMasterChef(MASTER_CHEF).deposit(PID, staked, address(this));
-  }
-
-
-  function depositNative(uint256 amount) external override nonReentrant returns (uint256 staked) {
-    require(_msgSender() == address(vault), "FAILED_VAULT_CHECK");
-    if (!IERC20(USDC_WETH_POS).approve(MASTER_CHEF, staked)) {
-      revert("STAKE_APPROVE");
-    }
-    IMasterChef(MASTER_CHEF).deposit(PID, staked, address(this));
+  function depositNative(uint256 amount) external override nonReentrant onlyVault returns (uint256 staked) {
+    depositChef(amount);
     return amount;
   }
 
-  function withdraw(uint256 staked) external override nonReentrant returns (uint256[] memory amounts) {
-    require(_msgSender() == address(vault), "FAILED_VAULT_CHECK");
+  function withdraw(uint256 staked) external override nonReentrant onlyVault returns (uint256[] memory amounts) {
     IMasterChef(MASTER_CHEF).withdraw(PID, staked, address(this));
     if (!IERC20(USDC_WETH_POS).approve(USDC_WETH_POS, staked)) {
       revert("REMOVE_LP_APPROVE");
@@ -117,5 +102,46 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
     if (!IERC20(WETH_TOKEN).transfer(address(vault), amounts[1])) {
       revert("VAULT_TRANSFER_WETH");
     }
+  }
+
+  function emergencyWithdraw() external onlyOwner {
+    IMasterChef(MASTER_CHEF).emergencyWithdraw(PID, address(this));
+  }
+
+  function emergencyDeposit() external onlyOwner {
+    depositChef(IERC20(USDC_WETH_POS).balanceOf(address(this)));
+  }
+
+  function depositChef(uint256 amount) private {
+    if (!IERC20(USDC_WETH_POS).approve(MASTER_CHEF, amount)) {
+      revert("STAKE_APPROVE");
+    }
+    IMasterChef(MASTER_CHEF).deposit(PID, amount, address(this));
+  }
+
+  function depsoitLP(uint256[] memory amounts) private returns (uint256 staked) {
+    if (!IERC20(USDC_TOKEN).approve(USDC_WETH_POS, amounts[0])) {
+      revert("LP_USDC_APPROVE");
+    }
+    if (!IERC20(WETH_TOKEN).approve(USDC_WETH_POS, amounts[1])) {
+      revert("LP_WETH_APPROVE");
+    }
+    staked = IUniProxy(UNI_PROXY).deposit(amounts[0], amounts[1], address(this), USDC_WETH_POS, [uint(0), uint(0), uint(0), uint(0)]);
+    depositChef(staked);
+  }
+
+  function deductEarningsFee(address token, uint256 amount) private returns (uint256) {
+    uint fee = amount * vault.config().earningsFee() / BASE_PERCENT;
+    if (fee > 0) {
+      if (!ERC20Upgradeable(token).transfer(vault.config().feeAccount(), fee)) {
+        revert("FEE_TRANSFER");
+      }
+    }
+    return amount - fee;
+  }
+
+  modifier onlyVault() {
+    require(_msgSender() == address(vault), "VAULT_CHECK");
+    _;
   }
 }

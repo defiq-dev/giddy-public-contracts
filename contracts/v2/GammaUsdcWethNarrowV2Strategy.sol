@@ -23,7 +23,6 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
   address constant private WETH_TOKEN = 0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619;
   address constant private WMATIC_TOKEN = 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270;
   address constant private QUICK_TOKEN = 0xB5C064F955D8e7F38fE0460C556a72987494eE17;
-  address constant private QUICK_REWARDER = 0x158B99aE660D4511e4c52799e1c47613cA47a78a;
   address constant private DQUICK_TOKEN_AND_LAIR = 0x958d208Cdf087843e9AD98d23823d32E17d723A1;
   address constant private QUICK_ROUTER = 0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff;
   address constant private USDC_WETH_POS = 0x3Cc20A6795c4b57d9817399F68E83e71C8626580;
@@ -43,13 +42,21 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
 
   function getContractRewards() public view override returns (uint256[] memory amounts) {
     amounts = new uint256[](2);
-    amounts[0] = IERC20(WMATIC_TOKEN).balanceOf(address(this));
-    amounts[1] = IERC20(QUICK_TOKEN).balanceOf(address(this));
+    amounts[0] += IRewarder(IMasterChef(MASTER_CHEF).getRewarder(PID, 1)).pendingToken(PID, address(this));
+    amounts[0] += IERC20(WMATIC_TOKEN).balanceOf(address(this));
+    amounts[1] += IRewarder(IMasterChef(MASTER_CHEF).getRewarder(PID, 0)).pendingToken(PID, address(this));
+    amounts[1] += IERC20(QUICK_TOKEN).balanceOf(address(this));
   }
 
   function getNeedsCompound() public view override returns (bool needsCompound) {
     uint256[] memory rewards = getContractRewards();
     needsCompound = rewards[0] >= COMPOUND_THRESHOLD_WMATIC || rewards[1] >= COMPOUND_THRESHOLD_QUICK;
+  }
+
+  function getCompoundThresholds() external pure override returns (uint256[] memory thresholds) {
+    thresholds = new uint256[](2);
+    thresholds[0] = COMPOUND_THRESHOLD_WMATIC;
+    thresholds[1] = COMPOUND_THRESHOLD_QUICK;
   }
 
   function claimRewards() external override {

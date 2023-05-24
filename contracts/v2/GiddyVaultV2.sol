@@ -95,6 +95,10 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     return strategy.getNeedsCompound();
   }
 
+  function getCompoundThresholds() public view returns (uint256[] memory thresholds) {
+    return strategy.getCompoundThresholds();
+  }
+
   function getUserShares(address user) public view returns (uint256 shares) {
     return userShares[user];
   }
@@ -134,6 +138,7 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
 
   function compound(VaultAuth calldata vaultAuth) public whenNotPaused {
     validateVaultAuth(vaultAuth);
+    strategy.claimRewards();
     if (strategy.compound(vaultAuth.compoundSwaps) > 0) {
       emit CompoundV2(getContractBalance(), getContractShares());
     }
@@ -341,24 +346,5 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     ));
     require(config.verifiedContracts(EIP712.recover(domainSeparator, auth.signature, data)), "VERIFY_SWAP");
     nonceMap[auth.nonce] = true;
-  }
-
-  function testValidate(VaultAuth calldata auth) external view returns(address) {
-    bytes memory dataArray;
-    for (uint i = 0; i < auth.depositSwaps.length; i++) {
-      dataArray = abi.encodePacked(dataArray, keccak256(auth.depositSwaps[i].data));
-    }
-    for (uint i = 0; i < auth.compoundSwaps.length; i++) {
-      dataArray = abi.encodePacked(dataArray, keccak256(auth.compoundSwaps[i].data));
-    }
-    bytes memory data = abi.encodePacked(SWAP_AUTHORIZATION_TYPEHASH, abi.encode(
-      auth.nonce,
-      auth.deadline,
-      auth.amount,
-      auth.fap,
-      auth.fapIndex,
-      keccak256(dataArray)
-    ));
-    return EIP712.recover(domainSeparator, auth.signature, data);
   }
 }

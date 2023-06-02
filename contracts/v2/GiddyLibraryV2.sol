@@ -2,23 +2,24 @@
 pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-library GiddyLibraryV2 {
-  address constant internal ONE_INCH_ROUTER = 0x1111111254EEB25477B68fb85Ed929f73A960582;
+struct SwapInfo {
+  address srcToken;
+  uint256 amount;
+  bytes data;
+}
 
-  function oneInchSwap(address srcAccount, address dstAccount, address srcToken, address dstToken, uint amount, bytes calldata data) internal returns (uint returnAmount) {
-    if (!IERC20(srcToken).approve(ONE_INCH_ROUTER, amount)) {
+library GiddyLibraryV2 {
+  function routerSwap(address router, SwapInfo calldata swap, address srcAccount, address dstAccount, address dstToken) internal returns (uint returnAmount) {
+    if (!IERC20(swap.srcToken).approve(router, swap.amount)) {
       revert("SWAP_APPROVE");
     }
-    uint srcBalance = IERC20(srcToken).balanceOf(address(srcAccount));
+    uint srcBalance = IERC20(swap.srcToken).balanceOf(address(srcAccount));
     uint dstBalance = IERC20(dstToken).balanceOf(address(dstAccount));
-    (bool swapResult, bytes memory swaptData) = address(ONE_INCH_ROUTER).call(data);
+    (bool swapResult, ) = address(router).call(swap.data);
     if (!swapResult) {
       revert("SWAP_CALL");
     }
-    uint spentAmount;
-    (returnAmount, spentAmount) = abi.decode(swaptData, (uint, uint));
-    require(spentAmount == amount, "SWAP_SPENT");
-    require(srcBalance - IERC20(srcToken).balanceOf(srcAccount) == spentAmount, "SWAP_SRC_BALANCE");
-    require(IERC20(dstToken).balanceOf(dstAccount) - dstBalance == returnAmount, "SWAP_DST_BALANCE");
+    require(srcBalance - IERC20(swap.srcToken).balanceOf(srcAccount) == swap.amount, "SWAP_SRC_BALANCE");
+    returnAmount = IERC20(dstToken).balanceOf(dstAccount) - dstBalance;
   }
 }

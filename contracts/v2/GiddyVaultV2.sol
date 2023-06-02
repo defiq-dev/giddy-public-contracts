@@ -38,7 +38,6 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
   using SafeERC20Upgradeable for ERC20Upgradeable;
   uint256 constant internal INIT_SHARES = 1e10;
   uint256 constant internal BASE_PERCENT = 1e6;
-  address constant internal ONE_INCH_ROUTER = 0x1111111254EEB25477B68fb85Ed929f73A960582;
   address constant internal USDC_TOKEN = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
   address constant internal GIDDY_TOKEN = 0x67eB41A14C0fe5CD701FC9d5A3D6597A72F641a6;
   address constant internal GIDDY_USDC_PAIR = 0xDE990994309BC08E57aca82B1A19170AD84323E8;
@@ -79,45 +78,8 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     return ERC2771ContextUpgradeable._msgData();
   }
 
-  function getContractShares() public view returns (uint256 shares) {
-    return contractShares;
-  }
-
-  function getContractBalance() public view returns (uint256 amount) {
-    return strategy.getContractBalance();
-  }
-
-  function getContractRewards() public view returns (uint256[] memory amounts) {
-    return strategy.getContractRewards();
-  }
-
-  function getNeedsCompound() public view returns (bool needsCompound) {
-    return strategy.getNeedsCompound();
-  }
-
-  function getCompoundThresholds() public view returns (uint256[] memory thresholds) {
-    return strategy.getCompoundThresholds();
-  }
-
-  function getUserShares(address user) public view returns (uint256 shares) {
-    return userShares[user];
-  }
-
-  function getUserBalance(address user) public view returns (uint256 amount) {
-    return sharesToValue(getUserShares(user));
-  }
-
-  function sharesToValue(uint256 shares) public view returns (uint256 amount) {
-    if (contractShares == 0) return 0;
-    return getContractBalance() * shares / contractShares;
-  }
-
   function getNativeToken() external view returns (address token) {
     return query.getNativeToken();
-  }
-
-  function getRewardTokens() external view returns (address[] memory tokens) {
-    return query.getRewardTokens(); 
   }
 
   function getDepositTokens() external view returns (address[] memory tokens) {
@@ -136,43 +98,41 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     return query.getWithdrawAmounts(sharesToValue(shares));
   }
 
+  function getRewardTokens() external view returns (address[] memory tokens) {
+    return query.getRewardTokens(); 
+  }
+
+  function getContractRewards() public view returns (uint256[] memory amounts) {
+    return strategy.getContractRewards();
+  }
+
+  function getContractShares() public view returns (uint256 shares) {
+    return contractShares;
+  }
+
+  function getContractBalance() public view returns (uint256 amount) {
+    return strategy.getContractBalance();
+  }
+
+  function getUserShares(address user) public view returns (uint256 shares) {
+    return userShares[user];
+  }
+
+  function getUserBalance(address user) public view returns (uint256 amount) {
+    return sharesToValue(getUserShares(user));
+  }
+
+  function sharesToValue(uint256 shares) public view returns (uint256 amount) {
+    if (contractShares == 0) return 0;
+    return getContractBalance() * shares / contractShares;
+  }
+  
   function compound(VaultAuth calldata vaultAuth) public whenNotPaused {
     validateVaultAuth(vaultAuth);
     strategy.claimRewards();
     if (strategy.compound(vaultAuth.compoundSwaps) > 0) {
       emit CompoundV2(getContractBalance(), getContractShares());
     }
-  }
-
-  function depositExact(uint256[] memory amounts, VaultAuth calldata vaultAuth) external whenNotPaused nonReentrant {
-    validateVaultAuth(vaultAuth);
-    compoundCheck(vaultAuth.compoundSwaps);
-    address[] memory depositTokens = query.getDepositTokens();
-    for (uint256 i; i < depositTokens.length; i++) {
-      if (amounts[i] > 0) {
-        SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(depositTokens[i]), _msgSender(), address(strategy), amounts[i]);
-        if (vaultAuth.fap > 0 && vaultAuth.fapIndex == i) {
-          amounts[i] = deductFee(depositTokens[i], amounts[i], vaultAuth.fap);
-        }
-      }
-    }
-    uint256 staked = strategy.deposit(amounts);
-    uint256 shares = contractShares == 0 ? staked * INIT_SHARES : staked * contractShares / (getContractBalance() - staked);
-    userShares[_msgSender()] += shares;
-    contractShares += shares;
-    emit DepositExact(_msgSender(), vaultAuth.fap, vaultAuth.fapIndex, amounts, shares);
-  }
-
-  function depositNative(VaultAuth calldata vaultAuth) external whenNotPaused nonReentrant {
-    validateVaultAuth(vaultAuth);
-    compoundCheck(vaultAuth.compoundSwaps);
-    address nativeToken = query.getNativeToken();
-    SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(nativeToken), _msgSender(), address(strategy), vaultAuth.amount);
-    uint256 staked = strategy.depositNative(deductFee(nativeToken, vaultAuth.amount, vaultAuth.fap));
-    uint256 shares = contractShares == 0 ? staked * INIT_SHARES : staked * contractShares / (getContractBalance() - staked);
-    userShares[_msgSender()] += shares;
-    contractShares += shares;
-    emit Deposit(_msgSender(), vaultAuth.fap, nativeToken, vaultAuth.amount, shares);
   }
 
   function depositSingle(VaultAuth calldata vaultAuth) external whenNotPaused nonReentrant {
@@ -189,6 +149,8 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     compoundCheck(vaultAuth.compoundSwaps);
     require(usdcAuth.spender == address(this), "AUTH_SPENDER");
     require(usdcAuth.owner == _msgSender(), "AUTH_OWNER");
+
+
 
     IEIP3009(USDC_TOKEN).approveWithAuthorization(usdcAuth.owner, usdcAuth.spender, usdcAuth.value, usdcAuth.validAfter, usdcAuth.validBefore, usdcAuth.nonce, usdcAuth.v, usdcAuth.r, usdcAuth.s);
     if (!IERC20Upgradeable(USDC_TOKEN).transferFrom(usdcAuth.owner, address(this), usdcAuth.value)) {
@@ -219,6 +181,7 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
   function joinStrategy(address user, SwapInfo[] calldata swaps) private returns (uint256 shares) {
     address[] memory depositTokens = query.getDepositTokens();
     uint256[] memory amounts = new uint256[](depositTokens.length);
+    address router = config.swapRouter();
 
     for (uint8 i; i < depositTokens.length; i++) {
       if (swaps[i].amount > 0) {
@@ -229,7 +192,7 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
           amounts[i] = swaps[i].amount;
         }
         else {
-          amounts[i] = GiddyLibraryV2.oneInchSwap(swaps[i], address(this), address(strategy), depositTokens[i]);
+          amounts[i] = GiddyLibraryV2.routerSwap(router, swaps[i], address(this), address(strategy), depositTokens[i]);
         }
       }
     }
@@ -284,6 +247,9 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
   }
 
   function setStrategy(address strategyAddress) public onlyOwner {
+    if (address(strategy) != address(0)) {
+      strategy.moveStrategy(strategyAddress);
+    }
     strategy = GiddyStrategyV2(strategyAddress);
   }
 
@@ -322,7 +288,6 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
           emit CompoundV2(getContractBalance(), getContractShares());
         }
       }
-      require(!getNeedsCompound(), "NEEDS_COMPOUND");
     }
   }
 

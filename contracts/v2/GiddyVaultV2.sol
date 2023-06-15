@@ -4,7 +4,6 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/metatx/ERC2771ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "./interfaces/IEIP3009.sol";
 import "./ApproveWithAuthorization.sol";
 import "./GiddyStrategyV2.sol";
@@ -35,7 +34,6 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     bytes32 s;
   }
 
-  using SafeERC20Upgradeable for ERC20Upgradeable;
   uint256 constant internal INIT_SHARES = 1e10;
   uint256 constant internal BASE_PERCENT = 1e6;
   address constant internal USDC_TOKEN = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
@@ -129,7 +127,6 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
   
   function compound(VaultAuth calldata vaultAuth) public whenNotPaused {
     validateVaultAuth(vaultAuth);
-    strategy.claimRewards();
     if (strategy.compound(vaultAuth.compoundSwaps) > 0) {
       emit CompoundV2(getContractBalance(), getContractShares());
     }
@@ -150,12 +147,9 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     require(usdcAuth.spender == address(this), "AUTH_SPENDER");
     require(usdcAuth.owner == _msgSender(), "AUTH_OWNER");
 
-
-
     IEIP3009(USDC_TOKEN).approveWithAuthorization(usdcAuth.owner, usdcAuth.spender, usdcAuth.value, usdcAuth.validAfter, usdcAuth.validBefore, usdcAuth.nonce, usdcAuth.v, usdcAuth.r, usdcAuth.s);
-    if (!IERC20Upgradeable(USDC_TOKEN).transferFrom(usdcAuth.owner, address(this), usdcAuth.value)) {
-      revert("VAULT_ONE_STEP");
-    }
+    SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(USDC_TOKEN), usdcAuth.owner, address(this), usdcAuth.value);
+    
 
     deductFee(USDC_TOKEN, usdcAuth.value, vaultAuth.fap);
     uint256 shares = joinStrategy(usdcAuth.owner, vaultAuth.depositSwaps);
@@ -169,9 +163,7 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     require(giddyAuth.owner == _msgSender(), "AUTH_OWNER");
 
     ApproveWithAuthorization(GIDDY_TOKEN).approveWithAuthorization(giddyAuth, giddySig);
-    if (!IERC20Upgradeable(GIDDY_TOKEN).transferFrom(giddyAuth.owner, address(this), giddyAuth.value)) {
-      revert("VAULT_ONE_STEP");
-    }
+    SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(GIDDY_TOKEN), giddyAuth.owner, address(this), giddyAuth.value);
 
     deductFee(GIDDY_TOKEN, giddyAuth.value, vaultAuth.fap);
     uint256 shares = joinStrategy(giddyAuth.owner, vaultAuth.depositSwaps);
@@ -186,9 +178,7 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     for (uint8 i; i < depositTokens.length; i++) {
       if (swaps[i].amount > 0) {
         if (swaps[i].srcToken == depositTokens[i]) {
-          if (!ERC20Upgradeable(swaps[i].srcToken).transfer(address(strategy), swaps[i].amount)) {
-            revert("STRAT_TRANSFER");
-          }
+          SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(swaps[i].srcToken), address(strategy), swaps[i].amount);
           amounts[i] = swaps[i].amount;
         }
         else {
@@ -219,9 +209,7 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
         if (vaultAuth.fap > 0 && i == vaultAuth.fapIndex && amounts[0] >= vaultAuth.fap) {
           amounts[i] = deductFee(withdrawTokens[i], amounts[i], vaultAuth.fap);
         }
-        if (!ERC20Upgradeable(withdrawTokens[i]).transfer(_msgSender(), amounts[i])) {
-          revert("USER_TRANSFER");
-        }
+        SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(withdrawTokens[i]), _msgSender(), amounts[i]);
       }
     }
     emit Withdraw(_msgSender(), vaultAuth.fap, vaultAuth.fapIndex, vaultAuth.amount, amounts);
@@ -238,9 +226,7 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     uint256[] memory amounts = strategy.withdraw(staked);
     for (uint8 i; i < amounts.length; i++) {
       if (amounts[i] > 0) {
-        if (!ERC20Upgradeable(withdrawTokens[i]).transfer(_msgSender(), amounts[i])) {
-          revert("USER_TRANSFER");
-        }
+        SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(withdrawTokens[i]), _msgSender(), amounts[i]);
       }
     }
     emit Withdraw(_msgSender(), 0, 0, shares, amounts);
@@ -273,20 +259,15 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
   function deductFee(address token, uint256 amount, uint256 fap) private returns (uint256) {
     if (fap > 0) {
       require(fap < amount, "FEE_AMOUNT");
-      if (!ERC20Upgradeable(token).transfer(config.feeAccount(), fap)) {
-        revert("FEE_TRANSFER");
-      }
+      SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(token), config.feeAccount(), fap);
     }
     return amount - fap;
   }
 
   function compoundCheck(SwapInfo[] calldata swaps) private {
     if (rewardsEnabled) {
-      strategy.claimRewards();
-      if (swaps.length > 0) {
-        if (strategy.compound(swaps) > 0) {
-          emit CompoundV2(getContractBalance(), getContractShares());
-        }
+      if (strategy.compound(swaps) > 0) {
+        emit CompoundV2(getContractBalance(), getContractShares());
       }
     }
   }

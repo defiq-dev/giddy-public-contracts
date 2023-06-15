@@ -1,13 +1,8 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "./GiddyVaultV2.sol";
-import "./libraries/GiddyLibrary.sol";
 import "./interfaces/gamma/IUniProxy.sol";
 import "./interfaces/gamma/IHypervisor.sol";
-import "./libraries/FullMath.sol";
-import "./libraries/TickMath.sol";
 
 contract GammaUsdcWethNarrowV2Query is GiddyQueryV2, Initializable, OwnableUpgradeable {
   uint256 constant private RATIO_PERCENT = 1e18;

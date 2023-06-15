@@ -1,9 +1,5 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "./interfaces/gamma/IUniProxy.sol";
 import "./interfaces/gamma/IHypervisor.sol";
 import "./interfaces/gamma/IMasterChef.sol";
@@ -23,7 +19,6 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
   address constant private WMATIC_TOKEN = 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270;
   address constant private QUICK_TOKEN = 0xB5C064F955D8e7F38fE0460C556a72987494eE17;
   address constant private DQUICK_TOKEN_AND_LAIR = 0x958d208Cdf087843e9AD98d23823d32E17d723A1;
-  address constant private QUICK_ROUTER = 0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff;
   address constant private POS = 0x3Cc20A6795c4b57d9817399F68E83e71C8626580;
 
   GiddyVaultV2 public vault;
@@ -46,14 +41,14 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
     amounts[1] = COMPOUND_THRESHOLD_WMATIC;
 
     amounts[2] += IRewarder(IMasterChef(MASTER_CHEF).getRewarder(PID, 0)).pendingToken(PID, address(this));
-    amounts[2] += IDragonsLair(DQUICK_TOKEN_AND_LAIR).dQUICKForQUICK(IERC20(DQUICK_TOKEN_AND_LAIR).balanceOf(address(this)));
+    amounts[2] += IERC20(DQUICK_TOKEN_AND_LAIR).balanceOf(address(this));
+    amounts[2] = IDragonsLair(DQUICK_TOKEN_AND_LAIR).dQUICKForQUICK(amounts[2]);
     amounts[2] += IERC20(QUICK_TOKEN).balanceOf(address(this));
     amounts[3] = COMPOUND_THRESHOLD_QUICK;
   }
 
-  function claimRewards() external override { }
-
   function compound(SwapInfo[] calldata swaps) external override onlyVault returns (uint256 staked) {
+    if (swaps.length == 0) return 0;
     require(swaps.length == 4, "SWAP_LENGTH");
     
     IMasterChef(MASTER_CHEF).deposit(PID, 0, address(this));
@@ -75,11 +70,11 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
     }
     amounts[0] = deductEarningsFee(USDC_TOKEN, amounts[0]);
     amounts[1] = deductEarningsFee(WETH_TOKEN, amounts[1]);
-    return depsoitLP(amounts);
+    return depositLP(amounts);
   }
 
   function deposit(uint256[] memory amounts) external override nonReentrant onlyVault returns (uint256 staked) {
-    return depsoitLP(amounts);
+    return depositLP(amounts);
   }
 
   function depositNative(uint256 amount) external override nonReentrant onlyVault returns (uint256 staked) {
@@ -92,24 +87,15 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
     if (staked > contractBalance) {
       IMasterChef(MASTER_CHEF).withdraw(PID, staked - contractBalance, address(this));
     }
-    if (!IERC20(POS).approve(POS, staked)) {
-      revert("REMOVE_LP_APPROVE");
-    }
     amounts = new uint[](2);
     (amounts[0], amounts[1]) = IHypervisor(POS).withdraw(staked, address(this), address(this), [uint(0), uint(0), uint(0), uint(0)]);
-    if (!IERC20(USDC_TOKEN).transfer(address(vault), amounts[0])) {
-      revert("VAULT_TRANSFER_USDC");
-    }
-    if (!IERC20(WETH_TOKEN).transfer(address(vault), amounts[1])) {
-      revert("VAULT_TRANSFER_WETH");
-    }
+    SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(USDC_TOKEN), address(vault), amounts[0]);
+    SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(WETH_TOKEN), address(vault), amounts[1]);
   }
 
   function moveStrategy(address strategy) external override onlyVault {
     IMasterChef(MASTER_CHEF).emergencyWithdraw(PID, address(this));
-    if (!IERC20(POS).transfer(strategy, IERC20(POS).balanceOf(address(this)))) {
-      revert("TRANSFER_POS");
-    }
+    SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(POS), strategy, IERC20(POS).balanceOf(address(this)));
   }
 
   function emergencyWithdraw() external onlyOwner {
@@ -121,19 +107,13 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
   }
 
   function depositChef(uint256 amount) private {
-    if (!IERC20(POS).approve(MASTER_CHEF, amount)) {
-      revert("STAKE_APPROVE");
-    }
+    SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(POS), MASTER_CHEF, amount);
     IMasterChef(MASTER_CHEF).deposit(PID, amount, address(this));
   }
 
-  function depsoitLP(uint256[] memory amounts) private returns (uint256 staked) {
-    if (!IERC20(USDC_TOKEN).approve(POS, amounts[0])) {
-      revert("LP_USDC_APPROVE");
-    }
-    if (!IERC20(WETH_TOKEN).approve(POS, amounts[1])) {
-      revert("LP_WETH_APPROVE");
-    }
+  function depositLP(uint256[] memory amounts) private returns (uint256 staked) {
+    SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(USDC_TOKEN), POS, amounts[0]);
+    SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(WETH_TOKEN), POS, amounts[1]);
     staked = IUniProxy(UNI_PROXY).deposit(amounts[0], amounts[1], address(this), POS, [uint(0), uint(0), uint(0), uint(0)]);
     depositChef(staked);
   }
@@ -141,9 +121,7 @@ contract GammaUsdcWethNarrowV2Strategy is GiddyStrategyV2, Initializable, Reentr
   function deductEarningsFee(address token, uint256 amount) private returns (uint256) {
     uint fee = amount * vault.config().earningsFee() / BASE_PERCENT;
     if (fee > 0) {
-      if (!ERC20Upgradeable(token).transfer(vault.config().feeAccount(), fee)) {
-        revert("FEE_TRANSFER");
-      }
+      SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(token), vault.config().feeAccount(), fee);
     }
     return amount - fee;
   }

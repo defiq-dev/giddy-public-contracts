@@ -16,10 +16,12 @@ contract GiddyFarm is ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUp
     uint pending;
   }
 
+  uint256 constant internal BASE_PERCENT = 1e6;
+  uint256 constant internal WEIGHT = 1e30;
   address constant internal GIDDY_TOKEN = 0x67eB41A14C0fe5CD701FC9d5A3D6597A72F641a6;
   uint private remainingRewards;
-  uint private accumulatedRewards;
-  uint private lastUpdate;
+  uint public accumulatedRewards;
+  uint public lastUpdate;
 
   GiddyConfigYA public config;
   address public rewardToken;
@@ -76,9 +78,10 @@ contract GiddyFarm is ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUp
     if (block.timestamp > lastUpdate && user.amount > 0) {
       uint newRewards = (block.timestamp - lastUpdate) * rewardsPerSecond;
       if (newRewards > remainingRewards) newRewards = remainingRewards;
-      newRewards = accumulatedRewards + ((newRewards * 1e12) / staked);
-      amount += ((user.amount * newRewards) / 1e12) - user.debt;
+      newRewards = accumulatedRewards + ((newRewards * WEIGHT) / staked);
+      amount += ((user.amount * newRewards) / WEIGHT) - user.debt;
     }
+    amount -= amount * config.earningsFee() / BASE_PERCENT;
   }
 
   function deposit(ApproveWithAuthorization.ApprovalRequest calldata giddyAuth, bytes calldata giddySig, uint fap) external whenNotPaused nonReentrant {
@@ -88,20 +91,20 @@ contract GiddyFarm is ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUp
     SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(GIDDY_TOKEN), giddyAuth.owner, address(this), giddyAuth.value);
     uint256 amount = deductFee(GIDDY_TOKEN, giddyAuth.value, fap);
     User storage user = users[_msgSender()];
-    user.pending += ((user.amount * accumulatedRewards) / 1e12) - user.debt;
+    user.pending += ((user.amount * accumulatedRewards) / WEIGHT) - user.debt;
     user.amount += amount;
-    user.debt = (((user.amount) * accumulatedRewards) / 1e12);
+    user.debt = (((user.amount) * accumulatedRewards) / WEIGHT);
     emit Deposit(_msgSender(), giddyAuth.value, fap);
   }
 
-  function withdraw(uint256 amount, uint256 fap) external whenNotPaused nonReentrant {
+  function withdraw(uint256 amount, uint256 fap) external nonReentrant {
     require(amount > 0, "ZERO_AMOUNT");
     User storage user = users[_msgSender()];
     require(amount <= user.amount, "AMOUNT_EXCEEDS_OWNED");
     updateFarm();
-    user.pending += ((user.amount * accumulatedRewards) / 1e12) - user.debt;
+    user.pending += ((user.amount * accumulatedRewards) / WEIGHT) - user.debt;
     user.amount -= amount;
-    user.debt = (((user.amount) * accumulatedRewards) / 1e12);
+    user.debt = (((user.amount) * accumulatedRewards) / WEIGHT);
     SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(GIDDY_TOKEN), _msgSender(), deductFee(GIDDY_TOKEN, amount, fap));
     emit Withdraw(_msgSender(), amount, fap);
   }
@@ -109,11 +112,12 @@ contract GiddyFarm is ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUp
   function harvest(uint fap) external whenNotPaused nonReentrant {
     updateFarm();
     User storage user = users[_msgSender()];
-    uint amount = user.pending + ((user.amount * accumulatedRewards) / 1e12) - user.debt;
+    uint amount = user.pending + ((user.amount * accumulatedRewards) / WEIGHT) - user.debt;
     amount = deductFee(rewardToken, amount, fap);
     if (amount > 0) {
+      amount = deductFee(rewardToken, amount, amount * config.earningsFee() / BASE_PERCENT);
       SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(rewardToken), _msgSender(), amount);
-      user.debt = (((user.amount) * accumulatedRewards) / 1e12);
+      user.debt = (((user.amount) * accumulatedRewards) / WEIGHT);
       user.pending = 0;
       emit Harvest(_msgSender(), amount);
     }
@@ -128,11 +132,11 @@ contract GiddyFarm is ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUp
       uint elapsedSeconds = block.timestamp - lastUpdate;
       uint newRewards = elapsedSeconds * rewardsPerSecond;
       if (newRewards > remainingRewards) {
-        accumulatedRewards += ((remainingRewards * 1e12) / staked);
+        accumulatedRewards += ((remainingRewards * WEIGHT) / staked);
         remainingRewards = 0;
       }
       else {
-        accumulatedRewards += ((newRewards * 1e12) / staked);
+        accumulatedRewards += ((newRewards * WEIGHT) / staked);
         remainingRewards -= newRewards;
       }
     }
@@ -151,7 +155,7 @@ contract GiddyFarm is ReentrancyGuardUpgradeable, OwnableUpgradeable, PausableUp
     updateFarm();
     require(amount <= remainingRewards, "AMOUNT_EXCEEDS_REMAINING");
     remainingRewards -= amount;
-    SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(rewardToken), _msgSender(), address(this), amount);
+    SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(rewardToken), _msgSender(), amount);
   }
 
   function setRewardsPerSecond(uint value) external onlyOwner {

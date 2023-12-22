@@ -1,12 +1,10 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 import "./GiddyVaultV2.sol";
-import "./interfaces/gamma/IUniProxy.sol";
-import "./interfaces/gamma/IHypervisor.sol";
 
 contract AaveUsdcV2Query is GiddyQueryV2, Initializable, OwnableUpgradeable {
   uint256 constant private RATIO_PERCENT = 1e18;
-  address constant private USDC_TOKEN = 0x12eb2270c193ddc890350015bcadec414282383b;
+  address constant private USDC_TOKEN = 0x3c499c542cef5e3811e1192ce70d8cc03d5c3359;
   address constant private AM_USDC_TOKEN = 0xa4d94019934d8333ef880abffbf2fdd611c762bd;
 
   GiddyVaultV2 public vault;

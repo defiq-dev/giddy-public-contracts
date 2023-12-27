@@ -73,7 +73,7 @@ contract CurveATriCrypto3V2Strategy is GiddyStrategyV2, Initializable, Reentranc
   function emergencyDeposit() external onlyOwner { }
 
   function virtualPrice() private view returns (uint256) {
-    return ICurveCryptoBase(CURVE_POOL_BASE).get_virtual_price();
+    return ICurveCryptoBase(CURVE_POOL).get_virtual_price();
   }
 
   modifier onlyVault() {

@@ -56,13 +56,13 @@ contract AaveUsdcV2Strategy is GiddyStrategyV2, Initializable, ReentrancyGuardUp
   function withdraw(uint256 staked) external override nonReentrant onlyVault returns (uint256[] memory amounts) {
     amounts = new uint[](1);
     uint256 balance = IERC20(USDC_TOKEN).balanceOf(address(this));
-    ILendingPoolV3(LENDING_POOL).withdraw(USDC_TOKEN, value, address(this));
+    ILendingPoolV3(LENDING_POOL).withdraw(USDC_TOKEN, amounts[0], address(this));
     amounts[0] = IERC20(USDC_TOKEN).balanceOf(address(this)) - balance;
     SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(USDC_TOKEN), address(vault), amounts[0]);
   }
 
   function moveStrategy(address strategy) external override onlyVault {
-    SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(AM3CRV_TOKEN), strategy, IERC20(AM3CRV_TOKEN).balanceOf(address(this)));
+    SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(AM_USDC_TOKEN), strategy, IERC20(AM_USDC_TOKEN).balanceOf(address(this)));
   }
 
   function emergencyWithdraw() external onlyOwner { }

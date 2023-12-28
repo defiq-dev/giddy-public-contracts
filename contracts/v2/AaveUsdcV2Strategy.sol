@@ -6,9 +6,9 @@ import "./GiddyVaultV2.sol";
 
 contract AaveUsdcV2Strategy is GiddyStrategyV2, Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
   uint256 constant private BASE_PERCENT = 1e6;
-  address constant private USDC_TOKEN = 0x3c499c542cef5e3811e1192ce70d8cc03d5c3359;
-  address constant private AM_USDC_TOKEN = 0xa4d94019934d8333ef880abffbf2fdd611c762bd;
-  address constant private LENDING_POOL = 0x794a61358d6845594f94dc1db02a252b5b4814ad;
+  address constant private USDC_TOKEN = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
+  address constant private AM_USDC_TOKEN = 0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD;
+  address constant private LENDING_POOL = 0x794a61358D6845594F94dc1DB02A252b5b4814aD;
   uint256 constant private COMPOUND_THRESHOLD_USDC = 10e6;
 
   GiddyVaultV2 public vault;

@@ -8,8 +8,8 @@ import "./interfaces/curve/IRewardsGauge.sol";
 contract GammaUsdcWethNarrowV2Query is GiddyQueryV2, Initializable, OwnableUpgradeable {
   uint256 constant private RATIO_PERCENT = 1e18;
   address constant private USDC_TOKEN = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
-  address constant private AM3CRV_TOKEN = 0xe7a24ef0c5e95ffb0f6684b813a78f2a3ad7d171;
-  address constant private CURVE_POOL = 0x445fe580ef8d70ff569ab36e80c647af338db351;
+  address constant private AM3CRV_TOKEN = 0xE7a24EF0C5e95Ffb0f6684b813A78F2a3AD7D171;
+  address constant private CURVE_POOL = 0x445FE580eF8d70FF569aB36e80c647af338db351;
 
   GiddyVaultV2 public vault;
 

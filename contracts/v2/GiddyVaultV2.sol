@@ -36,7 +36,7 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
 
   uint256 constant internal INIT_SHARES = 1e10;
   uint256 constant internal BASE_PERCENT = 1e6;
-  address constant internal USDC_TOKEN = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
+  address constant internal USDC_TOKEN = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
   address constant internal GIDDY_TOKEN = 0x67eB41A14C0fe5CD701FC9d5A3D6597A72F641a6;
   address constant internal GIDDY_USDC_PAIR = 0xDE990994309BC08E57aca82B1A19170AD84323E8;
   bytes32 constant public SWAP_AUTHORIZATION_TYPEHASH = keccak256("VaultAuth(bytes32 nonce,uint256 deadline,uint256 amount,uint256 fap,uint256 fapIndex,bytes[] data)");
@@ -149,7 +149,6 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
 
     IEIP3009(USDC_TOKEN).approveWithAuthorization(usdcAuth.owner, usdcAuth.spender, usdcAuth.value, usdcAuth.validAfter, usdcAuth.validBefore, usdcAuth.nonce, usdcAuth.v, usdcAuth.r, usdcAuth.s);
     SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(USDC_TOKEN), usdcAuth.owner, address(this), usdcAuth.value);
-    
 
     deductFee(USDC_TOKEN, usdcAuth.value, vaultAuth.fap);
     uint256 shares = joinStrategy(usdcAuth.owner, vaultAuth.depositSwaps);

@@ -8,8 +8,8 @@ import "./GiddyVaultV2.sol";
 contract CurveATriCrypto3V2Strategy is GiddyStrategyV2, Initializable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
   uint256 constant private BASE_PERCENT = 1e6;
   address constant private USDC_TOKEN = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
-  address constant private AM3CRV_TOKEN = 0xe7a24ef0c5e95ffb0f6684b813a78f2a3ad7d171;
-  address constant private CURVE_POOL = 0x445fe580ef8d70ff569ab36e80c647af338db351;
+  address constant private AM3CRV_TOKEN = 0xE7a24EF0C5e95Ffb0f6684b813A78F2a3AD7D171;
+  address constant private CURVE_POOL = 0x445FE580eF8d70FF569aB36e80c647af338db351;
   uint256 constant private COMPOUND_THRESHOLD_USDC = 10e6;
 
   GiddyVaultV2 public vault;
@@ -73,7 +73,7 @@ contract CurveATriCrypto3V2Strategy is GiddyStrategyV2, Initializable, Reentranc
   function emergencyDeposit() external onlyOwner { }
 
   function virtualPrice() private view returns (uint256) {
-    return ICurveCryptoBase(CURVE_POOL_BASE).get_virtual_price();
+    return ICurveCryptoBase(CURVE_POOL).get_virtual_price();
   }
 
   modifier onlyVault() {

@@ -4,8 +4,8 @@ import "./GiddyVaultV2.sol";
 
 contract AaveUsdcV2Query is GiddyQueryV2, Initializable, OwnableUpgradeable {
   uint256 constant private RATIO_PERCENT = 1e18;
-  address constant private USDC_TOKEN = 0x3c499c542cef5e3811e1192ce70d8cc03d5c3359;
-  address constant private AM_USDC_TOKEN = 0xa4d94019934d8333ef880abffbf2fdd611c762bd;
+  address constant private USDC_TOKEN = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
+  address constant private AM_USDC_TOKEN = 0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD;
 
   GiddyVaultV2 public vault;
 

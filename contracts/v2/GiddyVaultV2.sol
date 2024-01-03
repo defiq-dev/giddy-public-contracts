@@ -22,9 +22,9 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     SwapInfo[] compoundSwaps;
   }
 
-  struct UsdcAuth {
-    address owner;
-    address spender;
+  struct UsdcTransfer {
+    address from;
+    address to;
     uint256 value;
     uint256 validAfter;
     uint256 validBefore;
@@ -141,14 +141,15 @@ contract GiddyVaultV2 is ReentrancyGuardUpgradeable, OwnableUpgradeable, Pausabl
     emit Deposit(_msgSender(), vaultAuth.fap, vaultAuth.depositSwaps[0].srcToken, vaultAuth.amount, shares);
   }
 
-  function depositUsdc(UsdcAuth calldata usdcAuth, VaultAuth calldata vaultAuth) external whenNotPaused nonReentrant {
+  function depositUsdc(UsdcTransfer calldata usdcTransfer, VaultAuth calldata vaultAuth) external whenNotPaused nonReentrant {
     validateVaultAuth(vaultAuth);
     compoundCheck(vaultAuth.compoundSwaps);
-    require(usdcAuth.spender == address(this), "AUTH_SPENDER");
-    require(usdcAuth.owner == _msgSender(), "AUTH_OWNER");
 
-    IEIP3009(USDC_TOKEN).approveWithAuthorization(usdcAuth.owner, usdcAuth.spender, usdcAuth.value, usdcAuth.validAfter, usdcAuth.validBefore, usdcAuth.nonce, usdcAuth.v, usdcAuth.r, usdcAuth.s);
-    SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(USDC_TOKEN), usdcAuth.owner, address(this), usdcAuth.value);
+    require(usdcTransfer.to == address(this), "USDC_TO");
+    require(usdcTransfer.from == _msgSender(), "USDC_FROM");
+    uint balance = SafeERC20Upgradeable.balanceOf(IERC20Upgradeable(USDC_TOKEN), address(this));
+    IEIP3009(USDC_TOKEN).transferWithAuthorization(usdcTransfer.from, usdcTransfer.to, usdcTransfer.value, usdcTransfer.validAfter, usdcTransfer.validBefore, usdcTransfer.nonce, usdcTransfer.v, usdcTransfer.r, usdcTransfer.s);
+    require(balance + usdcTransfer.value == SafeERC20Upgradeable.balanceOf(IERC20Upgradeable(USDC_TOKEN), address(this)), "USDC_TRANSFER");
 
     deductFee(USDC_TOKEN, usdcAuth.value, vaultAuth.fap);
     uint256 shares = joinStrategy(usdcAuth.owner, vaultAuth.depositSwaps);
